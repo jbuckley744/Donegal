@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Wild Atlantic Way — Scenic Day Plan</title>
+  
+  <style>
+    :root{--bg:#0f1115;--panel:#141a22;--muted:#98a2b3;--text:#ecf2ff;--brand:#7cc4ff;--accent:#66e3c4;--warn:#ff7a7a}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    header{text-align:center;padding:20px}
+    .controls{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:10px}
+    .controls input[type=time]{padding:6px 10px;border-radius:8px;border:1px solid #444;background:#1b2230;color:#fff}
+    .controls button{padding:8px 14px;border-radius:8px;border:none;background:#007bff;color:#fff;font-weight:600;cursor:pointer}
+    .controls .ghost{background:transparent;border:1px solid #777}
+    .table{max-width:1000px;margin:0 auto;padding:10px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px solid #333;text-align:left}
+    th{color:#7cc4ff}
+    @media(max-width:600px){thead{display:none}tbody tr{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:10px 0;background:#1b2230;border-radius:10px;padding:10px}tbody td{border:none}tbody td::before{content: attr(data-label) ": ";font-weight:700;color:#7cc4ff}}
+  </style>
+  <meta name="theme-color" content="#0f1115" />
+</head>
+<body>
+  <header>
+    <h1>Wild Atlantic Way — Scenic Day Plan</h1>
+    <p>Depart <strong>12:30</strong> • Arrive Glencolmcille Folk Village <strong>16:00</strong></p>
+  </header>
+  <div class="controls">
+    <label for="depart">Departure:</label>
+    <input id="depart" type="time" value="12:30" />
+    <button id="recalcBtn" onclick="recalc()">Recalculate</button>
+    <button class="ghost" onclick="resetDefaults()">Reset</button>
+    <button id="updateBtn" onclick="updateWeather()" aria-live="polite">Update Table<span id="spinner" style="display:none;margin-left:6px">⏳</span></button>
+    <span id="status" style="color:#7cc4ff;margin-left:10px">Fast load mode: weather on demand</span>
+  </div>
+  <div class="table">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Location</th>
+          <th>Arrive</th>
+          <th>Stay</th>
+          <th>Next Leg</th>
+          <th>Temp</th>
+          <th>Cond</th>
+          <th>Wind (mph)</th>
+          <th>Sunrise</th>
+          <th>Sunset</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div id="note" style="text-align:center;padding:10px;color:#ccc"></div>
+<script>
+const stops=[
+  {name:'Ballyeriston House (Portnoo)',minStay:0,lat:54.835221,lng:-8.419361},
+  {name:'Muckross Head — WAW Discovery Point',minStay:10,lat:54.622278,lng:-8.452235},
+  {name:'The Rusty Mackerel (Teelin)',minStay:50,lat:54.632,lng:-8.648},
+  {name:'Sliabh Liag Viewing Platform',minStay:30,lat:54.631659,lng:-8.681487},
+  {name:'Malin Beg — Silver Strand',minStay:10,lat:54.631803,lng:-8.769783},
+  {name:'Glencolmcille Folk Village (TARGET 16:00)',minStay:20,lat:54.708112,lng:-8.770874},
+  {name:'Glengesh Pass',minStay:5,lat:54.768024,lng:-8.676639},
+  {name:'Assaranca Waterfall',minStay:10,lat:54.767335,lng:-8.5895},
+  {name:'Ardara (finish in town)',minStay:0,lat:54.762587,lng:-8.408856}
+];
+const drive=[47,25,8,25,10,25,20,15];
+const defaultStay=[0,10,50,30,10,20,5,10,0];
+const targetStopIndex=5;
+const targetArrive=hmToDate('16:00');
+const conditionText={0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Depositing rime fog',51:'Light drizzle',53:'Moderate drizzle',55:'Dense drizzle',61:'Slight rain',63:'Moderate rain',65:'Heavy rain',80:'Rain showers',81:'Rain showers',82:'Violent rain showers',95:'Thunderstorm'};
+const weatherIcons={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',80:'🌦️',95:'⛈️'};
+function hmToDate(hm){const[h,m]=hm.split(':').map(Number);const d=new Date();d.setHours(h||0,m||0,0,0);return d;}
+function fmt(d){return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
+const minutes=n=>n*60000;
+function calc(departHM){
+  const depart=hmToDate(departHM);
+  const stay=[...defaultStay];
+  const adjustIndex=4;
+  const arrivalAt=(index)=>{let t=new Date(depart);for(let i=0;i<index;i++){t=new Date(t.getTime()+minutes(stay[i]));t=new Date(t.getTime()+minutes(drive[i]));}return t;};
+  const arriveAdjust=arrivalAt(adjustIndex);
+  const needDepartAdjust=new Date(targetArrive.getTime()-minutes(drive[adjustIndex]));
+  let recStayAdjust=Math.max(stops[adjustIndex].minStay,Math.round((needDepartAdjust-arriveAdjust)/60000));
+  if(needDepartAdjust<arriveAdjust){recStayAdjust=stops[adjustIndex].minStay;}
+  stay[adjustIndex]=recStayAdjust;
+  const rows=[];let t=new Date(depart);
+  for(let i=0;i<stops.length;i++){
+    rows.push({i,arrive:new Date(t),stay:stay[i]});
+    t=new Date(t.getTime()+minutes(stay[i]));
+    if(i<drive.length)t=new Date(t.getTime()+minutes(drive[i]));
+  }
+  return{stay,rows};
+}
+function render(){
+  const departHM=document.getElementById('depart').value||'12:30';
+  const{stay,rows}=calc(departHM);
+  const tb=document.getElementById('tbody');tb.innerHTML='';
+  rows.forEach((r,idx)=>{
+    const tr=document.createElement('tr');
+    const leg=(idx===0?'-':drive[idx-1]+' min');
+    tr.innerHTML=`<td data-label="#">${idx+1}</td><td data-label="Location">${stops[idx].name}</td><td data-label="Arrive">${fmt(r.arrive)}</td><td data-label="Stay">${stay[idx]} min</td><td data-label="Next Leg">${idx<rows.length-1?leg:'-'}</td><td data-label="Temp" id="t-${idx}">—</td><td data-label="Cond" id="c-${idx}">—</td><td data-label="Wind (mph)" id="w-${idx}">—</td><td data-label="Sunrise" id="sr-${idx}">—</td><td data-label="Sunset" id="ss-${idx}">—</td>`;
+    tb.appendChild(tr);
+  });
+  const folk=rows[targetStopIndex];
+  const onTime=Math.abs(folk.arrive-targetArrive)<60000;
+  const late=(folk.arrive-targetArrive)>60000;
+  const note=document.getElementById('note');
+  if(onTime)note.innerHTML=`✅ On track: arriving Folk Village at <strong>${fmt(folk.arrive)}</strong>.`;
+  else if(late)note.innerHTML=`⚠️ Late: projected Folk Village arrival <strong>${fmt(folk.arrive)}</strong>.`;
+  else note.innerHTML=`⏱️ Early by ${(targetArrive-folk.arrive)/60000|0} min.`;
+  document.getElementById('status').textContent='Plan updated '+new Date().toLocaleTimeString();
+}
+// 10-minute cache for weather responses in localStorage
+async function updateWeather(){
+  const btn=document.getElementById('updateBtn'); const sp=document.getElementById('spinner');
+  if(sp) sp.style.display='inline'; if(btn) btn.disabled=true;
+  const keyOf = (s)=>`wx:${s.lat.toFixed(3)},${s.lng.toFixed(3)}`;
+  const isFresh = (t)=> (Date.now()-t) < 10*60*1000;
+  const fetchOne = async (s,i)=>{
+    try{
+      const key=keyOf(s);
+      const cached=localStorage.getItem(key);
+      if(cached){ const obj=JSON.parse(cached); if(isFresh(obj.t)){ return {i, d:obj.d}; } }
+      const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(), 8000);
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lng}&current_weather=true&daily=sunrise,sunset&timezone=auto`;
+      const resp=await fetch(url,{signal:ctl.signal});
+      clearTimeout(to);
+      const d=await resp.json();
+      localStorage.setItem(key, JSON.stringify({t:Date.now(), d}));
+      return {i,d};
+    }catch(e){ return {i,d:null}; }
+  };
+  try{
+    const results=await Promise.all(stops.map(fetchOne));
+    results.forEach(({i,d})=>{
+      const w=d?.current_weather;
+      const temp=(w&&typeof w.temperature==='number')?`${w.temperature}°C`:'—';
+      const cond=w?(weatherIcons[w.weathercode]||'')+' '+(conditionText[w.weathercode]||'Unknown'):'—';
+      const windMph=(w&&typeof w.windspeed==='number')?`${Math.round(w.windspeed*0.621371)} mph`:'—';
+      const sunrise=d?.daily?.sunrise?.length?new Date(d.daily.sunrise[0]).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'—';
+      const sunset=d?.daily?.sunset?.length?new Date(d.daily.sunset[0]).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'—';
+      const tCell=document.getElementById(`t-${i}`),cCell=document.getElementById(`c-${i}`),wCell=document.getElementById(`w-${i}`),srCell=document.getElementById(`sr-${i}`),ssCell=document.getElementById(`ss-${i}`);
+      if(tCell)tCell.textContent=temp; if(cCell)cCell.textContent=cond; if(wCell)wCell.textContent=windMph; if(srCell)srCell.textContent=sunrise; if(ssCell)ssCell.textContent=sunset;
+    });
+    const status=document.getElementById('status'); if(status) status.textContent='Table updated '+new Date().toLocaleTimeString();
+  } finally {
+    if(sp) sp.style.display='none'; if(btn) btn.disabled=false;
+  }
+}
+
+function recalc(){
+  render();
+  updateWeather();
+}
+function resetDefaults(){ document.getElementById('depart').value='12:30'; render(); updateWeather(); }
+render(); updateWeather();
+</script>
+</body>
+</html>
