@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Wild Atlantic Way — Scenic Day Plan</title>
-  
   <style>
     :root{--bg:#0f1115;--panel:#141a22;--muted:#98a2b3;--text:#ecf2ff;--brand:#7cc4ff;--accent:#66e3c4;--warn:#ff7a7a}
     *{box-sizing:border-box}
@@ -19,13 +18,23 @@
     th,td{padding:10px;border-bottom:1px solid #333;text-align:left}
     th{color:#7cc4ff}
     @media(max-width:600px){thead{display:none}tbody tr{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:10px 0;background:#1b2230;border-radius:10px;padding:10px}tbody td{border:none}tbody td::before{content: attr(data-label) ": ";font-weight:700;color:#7cc4ff}}
+    .sauna-box{background:#1b2230;margin:20px auto;padding:15px;border-radius:12px;max-width:700px;text-align:center;box-shadow:0 0 10px rgba(0,0,0,0.4)}
+    .sauna-box h2{color:#66e3c4;margin-bottom:5px}
+    .sauna-box p{color:#ccc;margin:0}
+    .logo img{width:160px;margin-top:10px}
   </style>
   <meta name="theme-color" content="#0f1115" />
 </head>
 <body>
   <header>
+    <div class="logo"><img src="https://upload.wikimedia.org/wikipedia/commons/0/0e/Wild_Atlantic_Way_logo.svg" alt="Wild Atlantic Way Logo"></div>
     <h1>Wild Atlantic Way — Scenic Day Plan</h1>
-    <p>Depart <strong>12:30</strong> • Arrive Glencolmcille Folk Village <strong>16:00</strong></p>
+    <div class="sauna-box">
+      <h2>Morning Experience</h2>
+      <p>🌊 <strong>Wild Atlantic Sauna</strong> — Dooey Beach</p>
+      <p>🕙 <strong>10:10 AM</strong> Sauna session before hitting the road</p>
+    </div>
+    <p>Depart <strong>12:30</strong> • Arrive Glencolmcille Folk Village <strong>~16:05</strong></p>
   </header>
   <div class="controls">
     <label for="depart">Departure:</label>
@@ -41,9 +50,10 @@
         <tr>
           <th>#</th>
           <th>Location</th>
+          <th>Journey Time</th>
+          <th>Distance</th>
           <th>Arrive</th>
           <th>Stay</th>
-          <th>Next Leg</th>
           <th>Temp</th>
           <th>Cond</th>
           <th>Wind (mph)</th>
@@ -56,106 +66,128 @@
   </div>
   <div id="note" style="text-align:center;padding:10px;color:#ccc"></div>
 <script>
+// --- Trip data (with Rusty Mackerel before Sliabh Liag)
 const stops=[
   {name:'Ballyeriston House (Portnoo)',minStay:0,lat:54.835221,lng:-8.419361},
   {name:'Muckross Head — WAW Discovery Point',minStay:10,lat:54.622278,lng:-8.452235},
   {name:'The Rusty Mackerel (Teelin)',minStay:50,lat:54.632,lng:-8.648},
-  {name:'Sliabh Liag Viewing Platform',minStay:30,lat:54.631659,lng:-8.681487},
+  {name:'Sliabh Liag Viewing Platform',minStay:20,lat:54.631659,lng:-8.681487},
   {name:'Malin Beg — Silver Strand',minStay:10,lat:54.631803,lng:-8.769783},
   {name:'Glencolmcille Folk Village (TARGET 16:00)',minStay:20,lat:54.708112,lng:-8.770874},
   {name:'Glengesh Pass',minStay:5,lat:54.768024,lng:-8.676639},
   {name:'Assaranca Waterfall',minStay:10,lat:54.767335,lng:-8.5895},
   {name:'Ardara (finish in town)',minStay:0,lat:54.762587,lng:-8.408856}
 ];
-const drive=[47,25,8,25,10,25,20,15];
-const defaultStay=[0,10,50,30,10,20,5,10,0];
-const targetStopIndex=5;
-const targetArrive=hmToDate('16:00');
-const conditionText={0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Depositing rime fog',51:'Light drizzle',53:'Moderate drizzle',55:'Dense drizzle',61:'Slight rain',63:'Moderate rain',65:'Heavy rain',80:'Rain showers',81:'Rain showers',82:'Violent rain showers',95:'Thunderstorm'};
-const weatherIcons={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',80:'🌦️',95:'⛈️'};
+// Driving minutes between consecutive stops (same order as above)
+const drive=[49,14,11,35,14,24,20,14]; // minutes per leg
+// Default dwell times (min) per stop
+const defaultStay=[0,10,50,20,10,20,5,10,0];
+
+// Leg distances (for display)
+const distances=["-","38 km","9.8 km","3.9 km","20.7 km","8.0 km","17.8 km","12.3 km","8.5 km"]; 
+
+// Weather mappings — FIX: define conditionText used in updateWeather()
+const conditionText={
+  0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',
+  45:'Fog',48:'Depositing rime fog',
+  51:'Light drizzle',53:'Moderate drizzle',55:'Dense drizzle',
+  61:'Slight rain',63:'Moderate rain',65:'Heavy rain',
+  71:'Slight snow',73:'Moderate snow',75:'Heavy snow',
+  80:'Rain showers',81:'Rain showers',82:'Violent rain showers',
+  95:'Thunderstorm',96:'Thunderstorm with hail',99:'Thunderstorm with heavy hail'
+};
+const weatherIcons={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',80:'🌦️',81:'🌦️',82:'🌧️',95:'⛈️',96:'⛈️',99:'⛈️'};
+
+// ---- Utilities
 function hmToDate(hm){const[h,m]=hm.split(':').map(Number);const d=new Date();d.setHours(h||0,m||0,0,0);return d;}
-function fmt(d){return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
+function fmt(d){return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});} 
 const minutes=n=>n*60000;
+
+// ---- Core schedule calc
 function calc(departHM){
-  const depart=hmToDate(departHM);
+  const depart=hmToDate(departHM||'12:30');
   const stay=[...defaultStay];
-  const adjustIndex=4;
-  const arrivalAt=(index)=>{let t=new Date(depart);for(let i=0;i<index;i++){t=new Date(t.getTime()+minutes(stay[i]));t=new Date(t.getTime()+minutes(drive[i]));}return t;};
-  const arriveAdjust=arrivalAt(adjustIndex);
-  const needDepartAdjust=new Date(targetArrive.getTime()-minutes(drive[adjustIndex]));
-  let recStayAdjust=Math.max(stops[adjustIndex].minStay,Math.round((needDepartAdjust-arriveAdjust)/60000));
-  if(needDepartAdjust<arriveAdjust){recStayAdjust=stops[adjustIndex].minStay;}
-  stay[adjustIndex]=recStayAdjust;
-  const rows=[];let t=new Date(depart);
+  const rows=[]; let t=new Date(depart);
   for(let i=0;i<stops.length;i++){
     rows.push({i,arrive:new Date(t),stay:stay[i]});
+    // dwell at i then drive to next leg
     t=new Date(t.getTime()+minutes(stay[i]));
-    if(i<drive.length)t=new Date(t.getTime()+minutes(drive[i]));
+    if(i<drive.length) t=new Date(t.getTime()+minutes(drive[i]));
   }
-  return{stay,rows};
+  return {stay,rows};
 }
+
+// ---- Render single table
 function render(){
-  const departHM=document.getElementById('depart').value||'12:30';
-  const{stay,rows}=calc(departHM);
-  const tb=document.getElementById('tbody');tb.innerHTML='';
+  const departHM=document.getElementById('depart')?.value||'12:30';
+  const {stay,rows}=calc(departHM);
+  const tb=document.getElementById('tbody'); if(!tb) return; tb.innerHTML='';
   rows.forEach((r,idx)=>{
     const tr=document.createElement('tr');
-    const leg=(idx===0?'-':drive[idx-1]+' min');
-    tr.innerHTML=`<td data-label="#">${idx+1}</td><td data-label="Location">${stops[idx].name}</td><td data-label="Arrive">${fmt(r.arrive)}</td><td data-label="Stay">${stay[idx]} min</td><td data-label="Next Leg">${idx<rows.length-1?leg:'-'}</td><td data-label="Temp" id="t-${idx}">—</td><td data-label="Cond" id="c-${idx}">—</td><td data-label="Wind (mph)" id="w-${idx}">—</td><td data-label="Sunrise" id="sr-${idx}">—</td><td data-label="Sunset" id="ss-${idx}">—</td>`;
+    tr.innerHTML=`
+      <td data-label="#">${idx+1}</td>
+      <td data-label="Location">${stops[idx].name}</td>
+      <td data-label="Journey Time">${idx===0?'-':drive[idx-1]+' min'}</td>
+      <td data-label="Distance">${distances[idx]}</td>
+      <td data-label="Arrive">${fmt(r.arrive)}</td>
+      <td data-label="Stay">${stay[idx]} min</td>
+      <td data-label="Temp" id="t-${idx}">—</td>
+      <td data-label="Cond" id="c-${idx}">—</td>
+      <td data-label="Wind (mph)" id="w-${idx}">—</td>
+      <td data-label="Sunrise" id="sr-${idx}">—</td>
+      <td data-label="Sunset" id="ss-${idx}">—</td>`;
     tb.appendChild(tr);
   });
-  const folk=rows[targetStopIndex];
-  const onTime=Math.abs(folk.arrive-targetArrive)<60000;
-  const late=(folk.arrive-targetArrive)>60000;
-  const note=document.getElementById('note');
-  if(onTime)note.innerHTML=`✅ On track: arriving Folk Village at <strong>${fmt(folk.arrive)}</strong>.`;
-  else if(late)note.innerHTML=`⚠️ Late: projected Folk Village arrival <strong>${fmt(folk.arrive)}</strong>.`;
-  else note.innerHTML=`⏱️ Early by ${(targetArrive-folk.arrive)/60000|0} min.`;
-  document.getElementById('status').textContent='Plan updated '+new Date().toLocaleTimeString();
+
+  const folkIdx = stops.findIndex(s=>/Folk Village/.test(s.name));
+  if(folkIdx>=0){
+    const when = rows[folkIdx].arrive;
+    const note=document.getElementById('note');
+    if(note) note.innerHTML = `📍 Projected arrival at Folk Village: <strong>${fmt(when)}</strong>`;
+  }
+  const status=document.getElementById('status'); if(status) status.textContent='Plan updated '+new Date().toLocaleTimeString();
 }
-// 10-minute cache for weather responses in localStorage
+
+// ---- Weather (with cache + timeout)
 async function updateWeather(){
   const btn=document.getElementById('updateBtn'); const sp=document.getElementById('spinner');
   if(sp) sp.style.display='inline'; if(btn) btn.disabled=true;
-  const keyOf = (s)=>`wx:${s.lat.toFixed(3)},${s.lng.toFixed(3)}`;
-  const isFresh = (t)=> (Date.now()-t) < 10*60*1000;
-  const fetchOne = async (s,i)=>{
-    try{
-      const key=keyOf(s);
-      const cached=localStorage.getItem(key);
-      if(cached){ const obj=JSON.parse(cached); if(isFresh(obj.t)){ return {i, d:obj.d}; } }
-      const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(), 8000);
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lng}&current_weather=true&daily=sunrise,sunset&timezone=auto`;
-      const resp=await fetch(url,{signal:ctl.signal});
-      clearTimeout(to);
-      const d=await resp.json();
-      localStorage.setItem(key, JSON.stringify({t:Date.now(), d}));
-      return {i,d};
-    }catch(e){ return {i,d:null}; }
-  };
+  const keyOf=(s)=>`wx:${s.lat.toFixed(3)},${s.lng.toFixed(3)}`; const isFresh=(t)=> (Date.now()-t)<10*60*1000;
+  const fetchOne=async(s,i)=>{ try{
+    const key=keyOf(s); const cached=localStorage.getItem(key);
+    if(cached){ const obj=JSON.parse(cached); if(isFresh(obj.t)){ return {i,d:obj.d}; } }
+    const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),8000);
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lng}&current_weather=true&daily=sunrise,sunset&timezone=auto`;
+    const resp=await fetch(url,{signal:ctl.signal}); clearTimeout(to); const d=await resp.json();
+    localStorage.setItem(key, JSON.stringify({t:Date.now(), d})); return {i,d};
+  }catch(e){ return {i,d:null}; } };
+
   try{
     const results=await Promise.all(stops.map(fetchOne));
     results.forEach(({i,d})=>{
       const w=d?.current_weather;
       const temp=(w&&typeof w.temperature==='number')?`${w.temperature}°C`:'—';
-      const cond=w?(weatherIcons[w.weathercode]||'')+' '+(conditionText[w.weathercode]||'Unknown'):'—';
+      const code=w?.weathercode; const text=(code in conditionText)?conditionText[code]:'Unknown';
+      const cond=w?(weatherIcons[code]||'')+` ${text}`:'—';
       const windMph=(w&&typeof w.windspeed==='number')?`${Math.round(w.windspeed*0.621371)} mph`:'—';
       const sunrise=d?.daily?.sunrise?.length?new Date(d.daily.sunrise[0]).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'—';
       const sunset=d?.daily?.sunset?.length?new Date(d.daily.sunset[0]).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'—';
       const tCell=document.getElementById(`t-${i}`),cCell=document.getElementById(`c-${i}`),wCell=document.getElementById(`w-${i}`),srCell=document.getElementById(`sr-${i}`),ssCell=document.getElementById(`ss-${i}`);
-      if(tCell)tCell.textContent=temp; if(cCell)cCell.textContent=cond; if(wCell)wCell.textContent=windMph; if(srCell)srCell.textContent=sunrise; if(ssCell)ssCell.textContent=sunset;
+      if(tCell) tCell.textContent=temp; if(cCell) cCell.textContent=cond; if(wCell) wCell.textContent=windMph; if(srCell) srCell.textContent=sunrise; if(ssCell) ssCell.textContent=sunset;
     });
     const status=document.getElementById('status'); if(status) status.textContent='Table updated '+new Date().toLocaleTimeString();
-  } finally {
-    if(sp) sp.style.display='none'; if(btn) btn.disabled=false;
-  }
+  } finally { if(sp) sp.style.display='none'; if(btn) btn.disabled=false; }
 }
 
-function recalc(){
-  render();
-  updateWeather();
-}
-function resetDefaults(){ document.getElementById('depart').value='12:30'; render(); updateWeather(); }
+// ---- Controls
+function recalc(){ render(); updateWeather(); }
+function resetDefaults(){ const el=document.getElementById('depart'); if(el) el.value='12:30'; render(); updateWeather(); }
+
+// ---- Basic runtime checks (lightweight tests)
+console.assert(typeof conditionText==='object' && Object.keys(conditionText).length>0, 'conditionText should be defined');
+console.assert(typeof weatherIcons==='object' && Object.keys(weatherIcons).length>0, 'weatherIcons should be defined');
+
+// ---- First paint
 render(); updateWeather();
 </script>
 </body>
